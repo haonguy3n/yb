@@ -52,14 +52,18 @@ func usage() {
 	fmt.Fprint(os.Stderr, `yb — kas-compatible Yocto build orchestrator
 
 Usage:
-  yb build [targets...]   checkout repos, generate conf, run bitbake in the container
-  yb shell                open a bitbake build shell in the container
+  yb build [file.yml] [targets...]  checkout repos, gen conf, run bitbake in the container
+  yb shell [file.yml]               open a bitbake build shell in the container
   yb version
+
+A positional *.yml/.yaml naming an existing file is the kas entry file (kas
+style); other positionals are bitbake targets. With no file, yb auto-detects the
+one carrying a yb: block.
 
 Common flags (build/shell):
   -C dir        project directory (default ".")
-  -f file       kas file (overrides kas_file in yb.yaml)
-  -version v    Yocto release; yb builds an aligned image (overrides yb.yaml)
+  -f file       kas entry file (else the file with a yb: block)
+  -version v    Yocto release; yb builds an aligned image (overrides yb: block)
   -image name   use this prebuilt image instead of building one
   -machine m    override MACHINE
   --rebuild     rebuild the version image even if it already exists
@@ -139,6 +143,33 @@ func resolveImage(p *project.Project, rebuild, dryRun bool, log image.Logf) (str
 
 func joinVersions() string { return strings.Join(image.Versions(), ", ") }
 
+// splitEntry separates a kas-file positional (kas-style `yb build irisentinel.yml`)
+// from bitbake targets. A positional naming an existing .yml/.yaml file becomes
+// the entry file; everything else is a target. An explicit -f wins.
+func splitEntry(dir, kasFlag string, args []string) (entry string, targets []string) {
+	entry = kasFlag
+	for _, a := range args {
+		if entry == "" && isKasFile(dir, a) {
+			entry = a
+			continue
+		}
+		targets = append(targets, a)
+	}
+	return entry, targets
+}
+
+func isKasFile(dir, a string) bool {
+	if !strings.HasSuffix(a, ".yml") && !strings.HasSuffix(a, ".yaml") {
+		return false
+	}
+	p := a
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(dir, a)
+	}
+	info, err := os.Stat(p)
+	return err == nil && !info.IsDir()
+}
+
 func cmdBuild(argv []string) error {
 	fs := flag.NewFlagSet("build", flag.ExitOnError)
 	dir := fs.String("C", ".", "project directory")
@@ -151,12 +182,13 @@ func cmdBuild(argv []string) error {
 	noCheckout := fs.Bool("no-checkout", false, "skip git checkout")
 	_ = fs.Parse(argv)
 
-	p, c, err := loaded(override{*dir, *kasFile, *version, *imageFlag, *machine, *rebuild})
+	entry, targets := splitEntry(*dir, *kasFile, fs.Args())
+
+	p, c, err := loaded(override{*dir, entry, *version, *imageFlag, *machine, *rebuild})
 	if err != nil {
 		return err
 	}
 
-	targets := fs.Args()
 	if len(targets) == 0 {
 		targets = c.Targets
 	}
@@ -213,7 +245,8 @@ func cmdShell(argv []string) error {
 	rebuild := fs.Bool("rebuild", false, "rebuild the version image")
 	_ = fs.Parse(argv)
 
-	p, c, err := loaded(override{*dir, *kasFile, *version, *imageFlag, *machine, *rebuild})
+	entry, _ := splitEntry(*dir, *kasFile, fs.Args())
+	p, c, err := loaded(override{*dir, entry, *version, *imageFlag, *machine, *rebuild})
 	if err != nil {
 		return err
 	}
