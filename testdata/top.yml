@@ -14,3 +14,9 @@ repos:
 local_conf_header:
   x: |
     FOO = "1"
+yb:
+  version: kirkstone
+  cache: /tmp/cache
+  ssh_key: ~/.ssh/id
+  mounts:
+    - /keys:ro

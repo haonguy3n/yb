@@ -61,3 +61,24 @@ func TestLayerResolution(t *testing.T) {
 		t.Errorf("PokyDir: got %q, %v", dir, err)
 	}
 }
+
+func TestYBBlockAndEntry(t *testing.T) {
+	c, err := Load("../../testdata/top.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Version != "kirkstone" {
+		t.Errorf("yb.version: got %q", c.Version)
+	}
+	if c.Cache != "/tmp/cache" {
+		t.Errorf("yb.cache: got %q", c.Cache)
+	}
+	if len(c.Mounts) != 1 || c.Mounts[0] != "/keys:ro" {
+		t.Errorf("yb.mounts: got %v", c.Mounts)
+	}
+
+	entry, err := FindEntry("../../testdata")
+	if err != nil || entry != "top.yml" {
+		t.Errorf("FindEntry: got %q, %v (want top.yml)", entry, err)
+	}
+}

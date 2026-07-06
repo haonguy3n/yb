@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -23,6 +24,13 @@ type Config struct {
 	Targets         []string
 	Repos           map[string]*Repo
 	LocalConfHeader map[string]string
+
+	// Orchestration read from the file's `yb:` block (yb-only; kas ignores it).
+	Version string
+	Image   string
+	Cache   string
+	SSHKey  string
+	Mounts  []string
 }
 
 // Repo is one entry under `repos:`.
@@ -95,6 +103,42 @@ func (c *Config) PokyDir() (string, error) {
 	return "", fmt.Errorf("no poky repo found (need a repo named 'poky' or one with a meta-poky layer)")
 }
 
+// FindEntry returns the single kas file in dir that carries a top-level `yb:`
+// block — the buildable entry. Errors if none, or more than one, is found (pass
+// an explicit file instead). Included fragments like base.yml carry no yb block.
+func FindEntry(dir string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+	var found []string
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || (!strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml")) {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			continue
+		}
+		var top struct {
+			YB *rawYB `yaml:"yb"`
+		}
+		if yaml.Unmarshal(data, &top) == nil && top.YB != nil {
+			found = append(found, name)
+		}
+	}
+	sort.Strings(found)
+	switch len(found) {
+	case 0:
+		return "", fmt.Errorf("no kas file with a `yb:` block in %s (pass the file explicitly)", dir)
+	case 1:
+		return found[0], nil
+	default:
+		return "", fmt.Errorf("multiple kas files with a `yb:` block: %s (pass one explicitly)", strings.Join(found, ", "))
+	}
+}
+
 // Load parses a kas file and its transitive includes into a merged Config.
 func Load(path string) (*Config, error) {
 	merged, err := loadMerged(path, map[string]bool{})
@@ -118,6 +162,16 @@ type rawKas struct {
 	Target          stringList          `yaml:"target"`
 	Repos           map[string]*rawRepo `yaml:"repos"`
 	LocalConfHeader map[string]string   `yaml:"local_conf_header"`
+	YB              rawYB               `yaml:"yb"`
+}
+
+// rawYB is the yb orchestration block embedded in a kas file.
+type rawYB struct {
+	Version string   `yaml:"version"`
+	Image   string   `yaml:"image"`
+	Cache   string   `yaml:"cache"`
+	SSHKey  string   `yaml:"ssh_key"`
+	Mounts  []string `yaml:"mounts"`
 }
 
 type rawRepo struct {
@@ -135,6 +189,11 @@ func (rk *rawKas) toConfig() *Config {
 		Targets:         rk.Target,
 		Repos:           map[string]*Repo{},
 		LocalConfHeader: rk.LocalConfHeader,
+		Version:         rk.YB.Version,
+		Image:           rk.YB.Image,
+		Cache:           rk.YB.Cache,
+		SSHKey:          rk.YB.SSHKey,
+		Mounts:          rk.YB.Mounts,
 	}
 	for name, rr := range rk.Repos {
 		r := &Repo{

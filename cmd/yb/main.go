@@ -76,30 +76,37 @@ type override struct {
 	rebuild                               bool
 }
 
-// loaded resolves the project and merged kas config shared by build and shell.
+// loaded resolves the kas config and orchestration shared by build and shell.
+// The entry kas file is o.kasFile, or auto-detected as the file carrying a `yb:`
+// block. Flags override the file's values.
 func loaded(o override) (*project.Project, *config.Config, error) {
-	p, err := project.Load(o.dir)
+	entry := o.kasFile
+	if entry == "" {
+		e, err := config.FindEntry(o.dir)
+		if err != nil {
+			return nil, nil, err
+		}
+		entry = e
+	}
+	if !filepath.IsAbs(entry) {
+		entry = filepath.Join(o.dir, entry)
+	}
+	c, err := config.Load(entry)
 	if err != nil {
 		return nil, nil, err
 	}
-	if o.kasFile != "" {
-		p.KasFile = o.kasFile
+	if o.machine != "" {
+		c.Machine = o.machine
+	}
+	p, err := project.New(o.dir, c)
+	if err != nil {
+		return nil, nil, err
 	}
 	if o.version != "" {
 		p.Version = o.version
 	}
 	if o.image != "" {
 		p.Image = o.image
-	}
-	if p.KasFile == "" {
-		return nil, nil, fmt.Errorf("no kas file: set kas_file in yb.yaml or pass -f")
-	}
-	c, err := config.Load(filepath.Join(p.Dir, p.KasFile))
-	if err != nil {
-		return nil, nil, err
-	}
-	if o.machine != "" {
-		c.Machine = o.machine
 	}
 	return p, c, nil
 }
@@ -111,7 +118,7 @@ func resolveImage(p *project.Project, rebuild, dryRun bool, log image.Logf) (str
 		return p.Image, nil
 	}
 	if p.Version == "" {
-		return "", fmt.Errorf("set 'version' (%s) or 'image' in yb.yaml", joinVersions())
+		return "", fmt.Errorf("set 'version' (%s) or 'image' in the kas file's yb: block", joinVersions())
 	}
 	if dryRun {
 		tag := image.Tag(p.Version)
@@ -153,7 +160,7 @@ func cmdBuild(argv []string) error {
 		targets = c.Targets
 	}
 	if len(targets) == 0 {
-		return fmt.Errorf("no targets: none in %s and none on the command line", p.KasFile)
+		return fmt.Errorf("no targets: none in the kas file and none on the command line")
 	}
 
 	log := func(format string, a ...any) { fmt.Printf("• "+format+"\n", a...) }

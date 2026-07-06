@@ -1,6 +1,6 @@
-// Package project loads yb.yaml, the orchestration layer that wraps a kas build:
-// which container image to run, where the shared cache lives, the ssh key, and
-// any extra bind mounts (e.g. HAB signing keys). It is yb-only; kas ignores it.
+// Package project holds the resolved orchestration for one build tree — which
+// container image/version to run, the cache dir, ssh key, and extra bind mounts.
+// These come from the `yb:` block of the kas file (see internal/config).
 package project
 
 import (
@@ -8,44 +8,36 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/anhhao17/yb/internal/config"
 )
 
-// DefaultCache is used when yb.yaml sets no cache.
+// DefaultCache is used when the yb block sets no cache.
 const DefaultCache = "/srv/yocto-cache"
 
 // Project is the resolved orchestration config for one build tree.
 type Project struct {
-	KasFile string   `yaml:"kas_file"`
-	Version string   `yaml:"version"` // Yocto release; yb builds an aligned image
-	Image   string   `yaml:"image"`   // optional: use this image instead of building one
-	Cache   string   `yaml:"cache"`
-	SSHKey  string   `yaml:"ssh_key"`
-	Mounts  []string `yaml:"mounts"` // "host/path" or "host/path:ro"
-
-	Dir string `yaml:"-"` // absolute project root
+	Version string   // Yocto release; yb builds an aligned image
+	Image   string   // optional: use this image instead of building one
+	Cache   string   // DL_DIR/SSTATE_DIR parent
+	SSHKey  string   // mounted read-only for private git
+	Mounts  []string // extra bind mounts ("host/path" or "host/path:ro")
+	Dir     string   // absolute project root
 }
 
-// Load reads dir/yb.yaml (optional) and applies defaults. dir becomes the
-// absolute project root.
-func Load(dir string) (*Project, error) {
-	p := &Project{}
-	data, err := os.ReadFile(filepath.Join(dir, "yb.yaml"))
-	switch {
-	case err == nil:
-		if err := yaml.Unmarshal(data, p); err != nil {
-			return nil, err
-		}
-	case !os.IsNotExist(err):
-		return nil, err
+// New builds a Project from a parsed config and the project directory, applying
+// defaults and expanding "~" in paths.
+func New(dir string, c *config.Config) (*Project, error) {
+	p := &Project{
+		Version: c.Version,
+		Image:   c.Image,
+		Cache:   c.Cache,
+		SSHKey:  expandHome(c.SSHKey),
 	}
-
+	for _, m := range c.Mounts {
+		p.Mounts = append(p.Mounts, expandHome(m))
+	}
 	if p.Cache == "" {
 		p.Cache = DefaultCache
-	}
-	p.SSHKey = expandHome(p.SSHKey)
-	for i, m := range p.Mounts {
-		p.Mounts[i] = expandHome(m)
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {

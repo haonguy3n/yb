@@ -27,16 +27,24 @@ make install          # -> $GOPATH/bin/yb
 
 ## Use
 
-In a project that has kas files (e.g. `irisentinel.yml`), add a `yb.yaml`:
+Add a `yb:` block to your top-level kas file (e.g. `irisentinel.yml`). kas
+ignores it; yb reads it:
 
 ```yaml
-kas_file: irisentinel.yml
-version:  zeus              # yb builds yb-yocto:zeus (Ubuntu 18.04 + python2)
-cache:    /srv/yocto-cache
-ssh_key:  ~/.ssh/iri
-mounts:
-  - /srv/old-hab-keys/irisentinel:ro
-# image: my/prebuilt:tag   # optional — skip image building, use this instead
+# irisentinel.yml
+header:
+  includes: [base.yml]
+machine: irisentinel9x9
+distro:  iritech-imx6ul
+target:  [iritech-hab-firmware]
+
+yb:
+  version: zeus              # yb builds yb-yocto:zeus (Ubuntu 18.04 + python2)
+  cache:   /srv/yocto-cache
+  ssh_key: ~/.ssh/iri
+  mounts:
+    - /srv/old-hab-keys/irisentinel:ro
+  # image: my/prebuilt:tag   # optional — skip image building, use this instead
 ```
 
 Known versions: `zeus`, `dunfell`, `gatesgarth`, `hardknott`, `honister`,
@@ -47,14 +55,17 @@ thereafter; `--rebuild` forces it).
 Then:
 
 ```sh
-yb build                 # checkout + conf + bitbake the target(s) from the kas file
-yb build core-image-base # build a specific target
+yb build                 # auto-detects the kas file carrying the yb: block
+yb build -f irisentinel.yml         # or name the file explicitly
+yb build iritech-hab-firmware       # build a specific target
 yb build --dry-run       # print the plan (repos, confs, docker command) — change nothing
 yb shell                 # bitbake build shell inside the container
 ```
 
-Flags: `-C <dir>` project dir, `-f <kasfile>`, `-version <v>`, `-image <name>`
-(use a prebuilt image), `-machine <m>`, `--rebuild` (rebuild the version image).
+The entry file is the one with a `yb:` block (included fragments like `base.yml`
+have none); pass `-f` to override. Flags: `-C <dir>` project dir, `-f <kasfile>`,
+`-version <v>`, `-image <name>` (use a prebuilt image), `-machine <m>`,
+`--rebuild` (rebuild the version image).
 
 ## Commands
 
