@@ -11,15 +11,16 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/anhhao17/yb/internal/conf"
-	"github.com/anhhao17/yb/internal/config"
-	"github.com/anhhao17/yb/internal/image"
-	"github.com/anhhao17/yb/internal/project"
-	"github.com/anhhao17/yb/internal/repo"
-	"github.com/anhhao17/yb/internal/runner"
+	"github.com/haonguy3n/yb/internal/conf"
+	"github.com/haonguy3n/yb/internal/config"
+	"github.com/haonguy3n/yb/internal/image"
+	"github.com/haonguy3n/yb/internal/project"
+	"github.com/haonguy3n/yb/internal/repo"
+	"github.com/haonguy3n/yb/internal/runner"
 )
 
-const version = "0.1.0"
+// version is stamped at release time via -ldflags "-X main.version=<tag>".
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {

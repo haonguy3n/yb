@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/anhhao17/yb/internal/config"
+	"github.com/haonguy3n/yb/internal/config"
 )
 
 // Logf receives one line of progress per action.
@@ -22,7 +22,9 @@ type Logf func(format string, args ...any)
 func Checkout(projectDir string, repos map[string]*config.Repo, sshKey string, dryRun bool, log Logf) error {
 	env := os.Environ()
 	if sshKey != "" {
-		env = append(env, "GIT_SSH_COMMAND=ssh -i "+sshKey+" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new")
+		if _, err := os.Stat(sshKey); err == nil {
+			env = append(env, "GIT_SSH_COMMAND=ssh -i "+sshKey+" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new")
+		}
 	}
 
 	names := make([]string, 0, len(repos))

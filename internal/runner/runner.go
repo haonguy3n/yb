@@ -11,8 +11,8 @@ import (
 	"path"
 	"strings"
 
-	"github.com/anhhao17/yb/internal/conf"
-	"github.com/anhhao17/yb/internal/project"
+	"github.com/haonguy3n/yb/internal/conf"
+	"github.com/haonguy3n/yb/internal/project"
 )
 
 // SSHKeyDest is where the ssh key is mounted for the builder user (matches the
@@ -54,7 +54,11 @@ func Run(p *project.Project, o Options) error {
 		args = append(args, "-v", host+":"+host+opt)
 	}
 	if p.SSHKey != "" {
-		args = append(args, "-v", p.SSHKey+":"+SSHKeyDest+":ro")
+		if _, err := os.Stat(p.SSHKey); err == nil {
+			args = append(args, "-v", p.SSHKey+":"+SSHKeyDest+":ro")
+		} else {
+			fmt.Fprintf(os.Stderr, "yb: ssh key %s not found; building without it\n", p.SSHKey)
+		}
 	}
 	args = append(args, "-w", conf.BuildDir, o.Image, "bash", "-c", inner)
 

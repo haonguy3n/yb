@@ -1,4 +1,4 @@
-module github.com/anhhao17/yb
+module github.com/haonguy3n/yb
 
 go 1.26
 
