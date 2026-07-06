@@ -11,33 +11,41 @@ import (
 	"github.com/haonguy3n/yb/internal/config"
 )
 
-// DefaultCache is used when the yb block sets no cache.
-const DefaultCache = "/srv/yocto-cache"
+// Defaults for the yb block's dl/sstate when unset.
+const (
+	DefaultDL     = "/srv/yocto-cache/downloads"
+	DefaultSState = "/srv/yocto-cache/sstate"
+)
 
 // Project is the resolved orchestration config for one build tree.
 type Project struct {
-	Version string   // Yocto release; yb builds an aligned image
-	Image   string   // optional: use this image instead of building one
-	Cache   string   // DL_DIR/SSTATE_DIR parent
-	SSHKey  string   // mounted read-only for private git
-	Mounts  []string // extra bind mounts ("host/path" or "host/path:ro")
-	Dir     string   // absolute project root
+	Version   string   // Yocto release; yb builds an aligned image
+	Image     string   // optional: use this image instead of building one
+	DLDir     string   // DL_DIR (mounted into the container)
+	SSTateDir string   // SSTATE_DIR (mounted into the container)
+	SSHKey    string   // mounted read-only for private git
+	Mounts    []string // extra bind mounts ("host/path" or "host/path:ro")
+	Dir       string   // absolute project root
 }
 
 // New builds a Project from a parsed config and the project directory, applying
 // defaults and expanding "~" in paths.
 func New(dir string, c *config.Config) (*Project, error) {
 	p := &Project{
-		Version: c.Version,
-		Image:   c.Image,
-		Cache:   c.Cache,
-		SSHKey:  expandHome(c.SSHKey),
+		Version:   c.Version,
+		Image:     c.Image,
+		DLDir:     expandHome(c.DLDir),
+		SSTateDir: expandHome(c.SSTateDir),
+		SSHKey:    expandHome(c.SSHKey),
 	}
 	for _, m := range c.Mounts {
 		p.Mounts = append(p.Mounts, expandHome(m))
 	}
-	if p.Cache == "" {
-		p.Cache = DefaultCache
+	if p.DLDir == "" {
+		p.DLDir = DefaultDL
+	}
+	if p.SSTateDir == "" {
+		p.SSTateDir = DefaultSState
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {

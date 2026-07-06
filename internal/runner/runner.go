@@ -44,7 +44,18 @@ func Run(p *project.Project, o Options) error {
 		args = append(args, "-it")
 	}
 	args = append(args, "-v", p.Dir+":"+conf.WorkDir)
-	args = append(args, "-v", p.Cache+":"+p.Cache)
+	// Mount DL_DIR and SSTATE_DIR at their host paths. Create them first so they
+	// are owned by the caller (uid 1000 = builder); a bind mount of a missing
+	// path would otherwise be created root-owned and unwritable in the container.
+	seen := map[string]bool{}
+	for _, d := range []string{p.DLDir, p.SSTateDir} {
+		if d == "" || seen[d] {
+			continue
+		}
+		seen[d] = true
+		_ = os.MkdirAll(d, 0o755)
+		args = append(args, "-v", d+":"+d)
+	}
 	for _, m := range p.Mounts {
 		host, opt := m, ""
 		if strings.HasSuffix(m, ":ro") {

@@ -58,7 +58,7 @@ Usage:
 
 Run it from the project directory. yb builds the file carrying a yb: block (name
 kas files as positional *.yml args to override or overlay, kas-style a.yml b.yml);
-version/cache/ssh_key/mounts come from that block.
+version/dl/sstate/ssh_key/mounts come from that block.
 
   --force   force git checkout/pull to the pinned commit/branch (build only)
 `)
@@ -164,7 +164,7 @@ func cmdBuild(argv []string) error {
 		return err
 	}
 	buildDir := filepath.Join(p.Dir, "build")
-	if err := conf.Write(buildDir, conf.LocalConf(c, p.Cache, runtime.NumCPU()), conf.BBLayers(c)); err != nil {
+	if err := conf.Write(buildDir, conf.LocalConf(c, p.DLDir, p.SSTateDir, runtime.NumCPU()), conf.BBLayers(c)); err != nil {
 		return err
 	}
 	pokyDir, err := c.PokyDir()
@@ -191,7 +191,7 @@ func cmdShell(argv []string) error {
 	log := func(format string, a ...any) { fmt.Printf("• "+format+"\n", a...) }
 	// Ensure confs exist so the sourced build env is complete.
 	buildDir := filepath.Join(p.Dir, "build")
-	if err := conf.Write(buildDir, conf.LocalConf(c, p.Cache, runtime.NumCPU()), conf.BBLayers(c)); err != nil {
+	if err := conf.Write(buildDir, conf.LocalConf(c, p.DLDir, p.SSTateDir, runtime.NumCPU()), conf.BBLayers(c)); err != nil {
 		return err
 	}
 	pokyDir, err := c.PokyDir()

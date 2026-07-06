@@ -26,11 +26,12 @@ type Config struct {
 	LocalConfHeader map[string]string
 
 	// Orchestration read from the file's `yb:` block (yb-only; kas ignores it).
-	Version string
-	Image   string
-	Cache   string
-	SSHKey  string
-	Mounts  []string
+	Version   string
+	Image     string
+	DLDir     string // DL_DIR
+	SSTateDir string // SSTATE_DIR
+	SSHKey    string
+	Mounts    []string
 }
 
 // Repo is one entry under `repos:`.
@@ -176,11 +177,12 @@ type rawKas struct {
 
 // rawYB is the yb orchestration block embedded in a kas file.
 type rawYB struct {
-	Version string   `yaml:"version"`
-	Image   string   `yaml:"image"`
-	Cache   string   `yaml:"cache"`
-	SSHKey  string   `yaml:"ssh_key"`
-	Mounts  []string `yaml:"mounts"`
+	Version   string   `yaml:"version"`
+	Image     string   `yaml:"image"`
+	DLDir     string   `yaml:"dl"`
+	SSTateDir string   `yaml:"sstate"`
+	SSHKey    string   `yaml:"ssh_key"`
+	Mounts    []string `yaml:"mounts"`
 }
 
 type rawRepo struct {
@@ -200,7 +202,8 @@ func (rk *rawKas) toConfig() *Config {
 		LocalConfHeader: rk.LocalConfHeader,
 		Version:         rk.YB.Version,
 		Image:           rk.YB.Image,
-		Cache:           rk.YB.Cache,
+		DLDir:           rk.YB.DLDir,
+		SSTateDir:       rk.YB.SSTateDir,
 		SSHKey:          rk.YB.SSHKey,
 		Mounts:          rk.YB.Mounts,
 	}

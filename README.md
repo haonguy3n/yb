@@ -13,8 +13,8 @@ static Go binary — no Python, no `kas-container`, no prebuilt image to manage.
 - **Reads existing kas files.** `machine`, `distro`, `target`, `repos`/`layers`,
   `local_conf_header`, and `header.includes` are parsed and deep-merged exactly
   as kas does. Repo refs use `commit:` or `branch:`.
-- **Our orchestration in `yb.yaml`.** Version, cache dir, ssh key, and extra bind
-  mounts live in a separate file, so the kas files stay portable.
+- **Our orchestration in a `yb:` block.** Version, `dl`/`sstate` dirs, ssh key,
+  and extra bind mounts live in a `yb:` block in the kas file; kas ignores it.
 
 See [docs/design/2026-07-06-yb.md](docs/design/2026-07-06-yb.md) for the design.
 
@@ -55,12 +55,17 @@ target:  [iritech-hab-firmware]
 
 yb:
   version: zeus              # yb builds yb-yocto:zeus (Ubuntu 18.04 + python2)
-  cache:   /srv/yocto-cache
+  dl:      /srv/yocto-cache/downloads          # DL_DIR (default; safe to share)
+  sstate:  /srv/yocto-cache/sstate-irisentinel # SSTATE_DIR (per-project keeps it isolated)
   ssh_key: ~/.ssh/iri
   mounts:
     - /srv/old-hab-keys/irisentinel:ro
   # image: my/prebuilt:tag   # optional — skip image building, use this instead
 ```
+
+`dl`/`sstate` default to `/srv/yocto-cache/{downloads,sstate}`. Sharing `dl`
+across projects deduplicates source downloads; a per-project `sstate` keeps each
+release's shared-state cache isolated. yb creates and mounts both.
 
 Known versions: `zeus`, `dunfell`, `gatesgarth`, `hardknott`, `honister`,
 `kirkstone`, `langdale`, `mickledore`, `nanbield`, `scarthgap` (extend the table
@@ -78,7 +83,7 @@ yb build --force         # force git checkout/pull to the pinned commit/branch
 yb shell                 # bitbake build shell inside the container
 ```
 
-Everything else — version, cache, ssh_key, mounts — comes from the `yb:` block.
+Everything else — version, dl, sstate, ssh_key, mounts — comes from the `yb:` block.
 A positional naming an existing `*.yml` file is a kas entry file; other
 positionals are bitbake targets.
 

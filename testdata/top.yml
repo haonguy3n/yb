@@ -16,7 +16,8 @@ local_conf_header:
     FOO = "1"
 yb:
   version: kirkstone
-  cache: /tmp/cache
+  dl: /tmp/dl
+  sstate: /tmp/ss
   ssh_key: ~/.ssh/id
   mounts:
     - /keys:ro

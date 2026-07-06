@@ -70,8 +70,8 @@ func TestYBBlockAndEntry(t *testing.T) {
 	if c.Version != "kirkstone" {
 		t.Errorf("yb.version: got %q", c.Version)
 	}
-	if c.Cache != "/tmp/cache" {
-		t.Errorf("yb.cache: got %q", c.Cache)
+	if c.DLDir != "/tmp/dl" || c.SSTateDir != "/tmp/ss" {
+		t.Errorf("yb.dl/sstate: got %q / %q", c.DLDir, c.SSTateDir)
 	}
 	if len(c.Mounts) != 1 || c.Mounts[0] != "/keys:ro" {
 		t.Errorf("yb.mounts: got %v", c.Mounts)
