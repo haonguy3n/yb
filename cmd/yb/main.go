@@ -1,6 +1,6 @@
 // Command yb is a kas-compatible Yocto build orchestrator: it reads existing kas
 // YAML, checks out the pinned repos, generates local.conf/bblayers.conf, and
-// runs bitbake inside our yocto-kas container. See docs/design/2026-07-06-yb.md.
+// runs bitbake inside a release-aligned container. See docs/design/2026-07-06-yb.md.
 package main
 
 import (
@@ -52,143 +52,105 @@ func usage() {
 	fmt.Fprint(os.Stderr, `yb — kas-compatible Yocto build orchestrator
 
 Usage:
-  yb build [file.yml] [targets...]  checkout repos, gen conf, run bitbake in the container
-  yb shell [file.yml]               open a bitbake build shell in the container
+  yb build [targets...]   checkout repos, generate conf, run bitbake in the container
+  yb shell                open a bitbake build shell in the container
   yb version
 
-A positional *.yml/.yaml naming an existing file is the kas entry file (kas
-style); other positionals are bitbake targets. With no file, yb auto-detects the
-one carrying a yb: block.
+Run it from the project directory. yb builds the file carrying a yb: block (name
+kas files as positional *.yml args to override or overlay, kas-style a.yml b.yml);
+version/cache/ssh_key/mounts come from that block.
 
-Common flags (build/shell):
-  -C dir        project directory (default ".")
-  -f file       kas entry file (else the file with a yb: block)
-  -version v    Yocto release; yb builds an aligned image (overrides yb: block)
-  -image name   use this prebuilt image instead of building one
-  -machine m    override MACHINE
-  --rebuild     rebuild the version image even if it already exists
-build-only:
-  --dry-run     print the resolved plan without changing or running anything
-  --no-checkout skip the git checkout step
-
-Known versions: `)
-	fmt.Fprintln(os.Stderr, joinVersions())
+  --force   force git checkout/pull to the pinned commit/branch (build only)
+`)
 }
 
-// override collects the flag values that can override yb.yaml.
-type override struct {
-	dir, kasFile, version, image, machine string
-	rebuild                               bool
-}
-
-// loaded resolves the kas config and orchestration shared by build and shell.
-// The entry kas file is o.kasFile, or auto-detected as the file carrying a `yb:`
-// block. Flags override the file's values.
-func loaded(o override) (*project.Project, *config.Config, error) {
-	entry := o.kasFile
-	if entry == "" {
-		e, err := config.FindEntry(o.dir)
+// loaded resolves the merged kas config and orchestration. Entry kas files are
+// the positional *.yml args, or the auto-detected file carrying a yb: block. The
+// project directory is the current directory.
+func loaded(entries []string) (*project.Project, *config.Config, error) {
+	const dir = "."
+	if len(entries) == 0 {
+		e, err := config.FindEntry(dir)
 		if err != nil {
 			return nil, nil, err
 		}
-		entry = e
+		entries = []string{e}
 	}
-	if !filepath.IsAbs(entry) {
-		entry = filepath.Join(o.dir, entry)
+	paths := make([]string, len(entries))
+	for i, e := range entries {
+		if filepath.IsAbs(e) {
+			paths[i] = e
+		} else {
+			paths[i] = filepath.Join(dir, e)
+		}
 	}
-	c, err := config.Load(entry)
+	c, err := config.LoadFiles(paths)
 	if err != nil {
 		return nil, nil, err
 	}
-	if o.machine != "" {
-		c.Machine = o.machine
-	}
-	p, err := project.New(o.dir, c)
+	p, err := project.New(dir, c)
 	if err != nil {
 		return nil, nil, err
-	}
-	if o.version != "" {
-		p.Version = o.version
-	}
-	if o.image != "" {
-		p.Image = o.image
 	}
 	return p, c, nil
 }
 
+// splitEntry separates positional kas files (existing *.yml/.yaml, optionally
+// colon-joined kas-style) from bitbake targets.
+func splitEntry(args []string) (entries, targets []string) {
+	for _, a := range args {
+		if files, ok := asKasFiles(a); ok {
+			entries = append(entries, files...)
+		} else {
+			targets = append(targets, a)
+		}
+	}
+	return entries, targets
+}
+
+// asKasFiles reports whether tok names one or more existing kas files (colon-
+// joined, kas style), and returns them.
+func asKasFiles(tok string) ([]string, bool) {
+	parts := strings.Split(tok, ":")
+	for _, p := range parts {
+		if !isKasFile(p) {
+			return nil, false
+		}
+	}
+	return parts, true
+}
+
+func isKasFile(a string) bool {
+	if !strings.HasSuffix(a, ".yml") && !strings.HasSuffix(a, ".yaml") {
+		return false
+	}
+	info, err := os.Stat(a)
+	return err == nil && !info.IsDir()
+}
+
 // resolveImage returns the image to run in: an explicit image wins; otherwise yb
-// builds (or, on dry-run, reports) the image for the project's version.
-func resolveImage(p *project.Project, rebuild, dryRun bool, log image.Logf) (string, error) {
+// builds (if missing) the image for the project's version.
+func resolveImage(p *project.Project, log image.Logf) (string, error) {
 	if p.Image != "" {
 		return p.Image, nil
 	}
 	if p.Version == "" {
-		return "", fmt.Errorf("set 'version' (%s) or 'image' in the kas file's yb: block", joinVersions())
+		return "", fmt.Errorf("set 'version' (%s) or 'image' in the kas file's yb: block",
+			strings.Join(image.Versions(), ", "))
 	}
-	if dryRun {
-		tag := image.Tag(p.Version)
-		prof, ok := image.Describe(p.Version)
-		if !ok {
-			return "", fmt.Errorf("unknown version %q (known: %s)", p.Version, joinVersions())
-		}
-		if image.Exists(tag) {
-			log("image %s (already built)", tag)
-		} else {
-			log("image %s (would build: ubuntu %s)", tag, prof.Ubuntu)
-		}
-		return tag, nil
-	}
-	return image.Ensure(p.Version, rebuild, log)
-}
-
-func joinVersions() string { return strings.Join(image.Versions(), ", ") }
-
-// splitEntry separates a kas-file positional (kas-style `yb build irisentinel.yml`)
-// from bitbake targets. A positional naming an existing .yml/.yaml file becomes
-// the entry file; everything else is a target. An explicit -f wins.
-func splitEntry(dir, kasFlag string, args []string) (entry string, targets []string) {
-	entry = kasFlag
-	for _, a := range args {
-		if entry == "" && isKasFile(dir, a) {
-			entry = a
-			continue
-		}
-		targets = append(targets, a)
-	}
-	return entry, targets
-}
-
-func isKasFile(dir, a string) bool {
-	if !strings.HasSuffix(a, ".yml") && !strings.HasSuffix(a, ".yaml") {
-		return false
-	}
-	p := a
-	if !filepath.IsAbs(p) {
-		p = filepath.Join(dir, a)
-	}
-	info, err := os.Stat(p)
-	return err == nil && !info.IsDir()
+	return image.Ensure(p.Version, false, log)
 }
 
 func cmdBuild(argv []string) error {
 	fs := flag.NewFlagSet("build", flag.ExitOnError)
-	dir := fs.String("C", ".", "project directory")
-	kasFile := fs.String("f", "", "kas file")
-	version := fs.String("version", "", "Yocto release")
-	imageFlag := fs.String("image", "", "prebuilt container image")
-	machine := fs.String("machine", "", "override MACHINE")
-	rebuild := fs.Bool("rebuild", false, "rebuild the version image")
-	dryRun := fs.Bool("dry-run", false, "print the plan, run nothing")
-	noCheckout := fs.Bool("no-checkout", false, "skip git checkout")
+	force := fs.Bool("force", false, "force git checkout/pull to the pinned ref")
 	_ = fs.Parse(argv)
 
-	entry, targets := splitEntry(*dir, *kasFile, fs.Args())
-
-	p, c, err := loaded(override{*dir, entry, *version, *imageFlag, *machine, *rebuild})
+	entries, targets := splitEntry(fs.Args())
+	p, c, err := loaded(entries)
 	if err != nil {
 		return err
 	}
-
 	if len(targets) == 0 {
 		targets = c.Targets
 	}
@@ -198,55 +160,31 @@ func cmdBuild(argv []string) error {
 
 	log := func(format string, a ...any) { fmt.Printf("• "+format+"\n", a...) }
 
-	if !*noCheckout {
-		if err := repo.Checkout(p.Dir, c.Repos, p.SSHKey, *dryRun, log); err != nil {
-			return err
-		}
+	if err := repo.Checkout(p.Dir, c.Repos, p.SSHKey, *force, log); err != nil {
+		return err
 	}
-
-	localConf := conf.LocalConf(c, p.Cache, runtime.NumCPU())
-	bblayers := conf.BBLayers(c)
 	buildDir := filepath.Join(p.Dir, "build")
-	if *dryRun {
-		fmt.Printf("\n--- %s ---\n%s", filepath.Join("build", "conf", "local.conf"), localConf)
-		fmt.Printf("\n--- %s ---\n%s\n", filepath.Join("build", "conf", "bblayers.conf"), bblayers)
-	} else {
-		if err := conf.Write(buildDir, localConf, bblayers); err != nil {
-			return err
-		}
+	if err := conf.Write(buildDir, conf.LocalConf(c, p.Cache, runtime.NumCPU()), conf.BBLayers(c)); err != nil {
+		return err
 	}
-
 	pokyDir, err := c.PokyDir()
 	if err != nil {
 		return err
 	}
-	img, err := resolveImage(p, *rebuild, *dryRun, log)
+	img, err := resolveImage(p, log)
 	if err != nil {
 		return err
 	}
-	if !*dryRun {
-		log("building %v for %s/%s in %s", targets, c.Machine, c.Distro, img)
-	}
-	return runner.Run(p, runner.Options{
-		Image:   img,
-		PokyDir: pokyDir,
-		Targets: targets,
-		DryRun:  *dryRun,
-	})
+	log("building %v for %s/%s in %s", targets, c.Machine, c.Distro, img)
+	return runner.Run(p, runner.Options{Image: img, PokyDir: pokyDir, Targets: targets})
 }
 
 func cmdShell(argv []string) error {
 	fs := flag.NewFlagSet("shell", flag.ExitOnError)
-	dir := fs.String("C", ".", "project directory")
-	kasFile := fs.String("f", "", "kas file")
-	version := fs.String("version", "", "Yocto release")
-	imageFlag := fs.String("image", "", "prebuilt container image")
-	machine := fs.String("machine", "", "override MACHINE")
-	rebuild := fs.Bool("rebuild", false, "rebuild the version image")
 	_ = fs.Parse(argv)
 
-	entry, _ := splitEntry(*dir, *kasFile, fs.Args())
-	p, c, err := loaded(override{*dir, entry, *version, *imageFlag, *machine, *rebuild})
+	entries, _ := splitEntry(fs.Args())
+	p, c, err := loaded(entries)
 	if err != nil {
 		return err
 	}
@@ -260,7 +198,7 @@ func cmdShell(argv []string) error {
 	if err != nil {
 		return err
 	}
-	img, err := resolveImage(p, *rebuild, false, log)
+	img, err := resolveImage(p, log)
 	if err != nil {
 		return err
 	}

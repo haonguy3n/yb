@@ -64,29 +64,28 @@ yb:
 
 Known versions: `zeus`, `dunfell`, `gatesgarth`, `hardknott`, `honister`,
 `kirkstone`, `langdale`, `mickledore`, `nanbield`, `scarthgap` (extend the table
-in `internal/image/image.go`). The first build builds the image (cached
-thereafter; `--rebuild` forces it).
+in `internal/image/image.go`). The first build builds the image; it is cached
+thereafter.
 
-Then:
+Run yb **from the project directory**:
 
 ```sh
 yb build                 # auto-detects the kas file carrying the yb: block
-yb build -f irisentinel.yml         # or name the file explicitly
+yb build irisentinel.yml            # or name the file (kas-style positional)
+yb build a.yml b.yml     # overlay files, kas-style (also a.yml:b.yml)
 yb build iritech-hab-firmware       # build a specific target
-yb build --dry-run       # print the plan (repos, confs, docker command) — change nothing
+yb build --force         # force git checkout/pull to the pinned commit/branch
 yb shell                 # bitbake build shell inside the container
 ```
 
-The entry file is the one with a `yb:` block (included fragments like `base.yml`
-have none); pass `-f` to override. Flags: `-C <dir>` project dir, `-f <kasfile>`,
-`-version <v>`, `-image <name>` (use a prebuilt image), `-machine <m>`,
-`--rebuild` (rebuild the version image).
+Everything else — version, cache, ssh_key, mounts — comes from the `yb:` block.
+A positional naming an existing `*.yml` file is a kas entry file; other
+positionals are bitbake targets.
 
 ## Commands
 
 ```
-build [targets...]   checkout repos, generate conf, run bitbake in the container
-                     (--dry-run, --no-checkout)
-shell                open a bitbake build shell in the container
+build [file.yml ...] [targets...]   checkout repos, gen conf, run bitbake (--force)
+shell [file.yml ...]                open a bitbake build shell in the container
 version
 ```

@@ -25,7 +25,6 @@ type Options struct {
 	PokyDir string   // poky checkout dir, relative to project root
 	Targets []string // bitbake targets (ignored when Shell)
 	Shell   bool     // drop into bash instead of running bitbake
-	DryRun  bool     // print the docker command, run nothing
 }
 
 // Run executes the build (or shell) for project p.
@@ -62,25 +61,7 @@ func Run(p *project.Project, o Options) error {
 	}
 	args = append(args, "-w", conf.BuildDir, o.Image, "bash", "-c", inner)
 
-	if o.DryRun {
-		fmt.Println("docker " + strings.Join(quoteAll(args), " "))
-		return nil
-	}
-
 	cmd := exec.Command("docker", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd.Run()
-}
-
-// quoteAll quotes args containing spaces so the printed command is copy-pasteable.
-func quoteAll(args []string) []string {
-	out := make([]string, len(args))
-	for i, a := range args {
-		if strings.ContainsAny(a, " \t") {
-			out[i] = fmt.Sprintf("%q", a)
-		} else {
-			out[i] = a
-		}
-	}
-	return out
 }

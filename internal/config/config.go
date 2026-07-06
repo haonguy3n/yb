@@ -140,10 +140,19 @@ func FindEntry(dir string) (string, error) {
 }
 
 // Load parses a kas file and its transitive includes into a merged Config.
-func Load(path string) (*Config, error) {
-	merged, err := loadMerged(path, map[string]bool{})
-	if err != nil {
-		return nil, err
+func Load(path string) (*Config, error) { return LoadFiles([]string{path}) }
+
+// LoadFiles parses several kas files (each with its own includes) and deep-merges
+// them left to right, so later files override earlier ones — the same semantics
+// as kas's `a.yml:b.yml`. Used to overlay a CI file on a base config.
+func LoadFiles(paths []string) (*Config, error) {
+	merged := map[string]interface{}{}
+	for _, path := range paths {
+		m, err := loadMerged(path, map[string]bool{})
+		if err != nil {
+			return nil, err
+		}
+		merged = mergeMap(merged, m)
 	}
 	out, err := yaml.Marshal(merged)
 	if err != nil {
@@ -151,7 +160,7 @@ func Load(path string) (*Config, error) {
 	}
 	var rk rawKas
 	if err := yaml.Unmarshal(out, &rk); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, fmt.Errorf("%s: %w", strings.Join(paths, ":"), err)
 	}
 	return rk.toConfig(), nil
 }

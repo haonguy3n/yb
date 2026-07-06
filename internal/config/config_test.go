@@ -82,3 +82,23 @@ func TestYBBlockAndEntry(t *testing.T) {
 		t.Errorf("FindEntry: got %q, %v (want top.yml)", entry, err)
 	}
 }
+
+func TestLoadFilesOverlay(t *testing.T) {
+	// kas-style `top.yml overlay.yml`: overlay wins on scalars, headers union.
+	c, err := LoadFiles([]string{"../../testdata/top.yml", "../../testdata/overlay.yml"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Machine != "overlaid-machine" {
+		t.Errorf("machine: got %q, want overlaid-machine (overlay wins)", c.Machine)
+	}
+	if c.Version != "kirkstone" {
+		t.Errorf("version: got %q, want kirkstone (from top's yb block)", c.Version)
+	}
+	if _, ok := c.LocalConfHeader["x"]; !ok {
+		t.Error("local_conf_header should keep x from top")
+	}
+	if _, ok := c.LocalConfHeader["ci"]; !ok {
+		t.Error("local_conf_header should gain ci from overlay")
+	}
+}

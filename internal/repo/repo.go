@@ -17,9 +17,11 @@ import (
 type Logf func(format string, args ...any)
 
 // Checkout ensures every url-backed repo exists at projectDir and is checked out
-// at its pinned ref. A url-less repo (the project itself) is skipped. When
-// dryRun is set, planned git commands are logged and nothing runs.
-func Checkout(projectDir string, repos map[string]*config.Repo, sshKey string, dryRun bool, log Logf) error {
+// at its pinned ref. A url-less repo (the project itself) is skipped. When force
+// is set, yb fetches and hard-checks-out the pinned ref (a branch is reset to its
+// latest origin tip), discarding local changes; otherwise it checks out gently
+// and fetches only when the ref is not already present.
+func Checkout(projectDir string, repos map[string]*config.Repo, sshKey string, force bool, log Logf) error {
 	env := os.Environ()
 	if sshKey != "" {
 		if _, err := os.Stat(sshKey); err == nil {
@@ -44,21 +46,34 @@ func Checkout(projectDir string, repos map[string]*config.Repo, sshKey string, d
 		}
 		dir := filepath.Join(projectDir, r.Dir())
 
-		if dryRun {
-			if !isGitRepo(dir) {
-				log("git clone %s %s", r.URL, r.Dir())
-			}
-			log("git -C %s checkout %s", r.Dir(), ref)
-			continue
-		}
-
 		if !isGitRepo(dir) {
 			log("cloning %s -> %s", r.URL, r.Dir())
 			if err := run(env, "", "git", "clone", r.URL, dir); err != nil {
 				return fmt.Errorf("clone %s: %w", name, err)
 			}
 		}
-		// Fetch only when the ref isn't already present locally.
+
+		if force {
+			log("fetching %s", name)
+			if err := run(env, dir, "git", "fetch", "--all", "--tags"); err != nil {
+				return fmt.Errorf("fetch %s: %w", name, err)
+			}
+			// A branch pin tracks its latest origin tip; a commit pin is exact.
+			// Either way, force past any local changes.
+			if r.Commit == "" && r.Branch != "" {
+				log("force %s -> origin/%s", name, r.Branch)
+				if err := run(env, dir, "git", "checkout", "-f", "-B", r.Branch, "origin/"+r.Branch); err != nil {
+					return fmt.Errorf("force checkout %s @ %s: %w", name, r.Branch, err)
+				}
+			} else if err := run(env, dir, "git", "checkout", "-f", ref); err != nil {
+				return fmt.Errorf("force checkout %s @ %s: %w", name, ref, err)
+			} else {
+				log("force checkout %s @ %s", name, short(ref))
+			}
+			continue
+		}
+
+		// Default: fetch only when the ref isn't already present locally.
 		if run(env, dir, "git", "cat-file", "-t", ref) != nil {
 			log("fetching %s", name)
 			if err := run(env, dir, "git", "fetch", "--all", "--tags"); err != nil {
