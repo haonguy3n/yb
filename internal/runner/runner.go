@@ -40,7 +40,10 @@ func Run(p *project.Project, o Options) error {
 	}
 
 	args := []string{"run", "--rm"}
-	if o.Shell {
+	// A TTY gives bitbake its live progress UI (like kas-container). A shell
+	// always needs it; a build gets it only when run interactively, so CI logs
+	// stay plain line-by-line output.
+	if o.Shell || interactive() {
 		args = append(args, "-it")
 	}
 	args = append(args, "-v", p.Dir+":"+conf.WorkDir)
@@ -75,4 +78,15 @@ func Run(p *project.Project, o Options) error {
 	cmd := exec.Command("docker", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return cmd.Run()
+}
+
+// interactive reports whether both stdin and stdout are terminals, so a TTY can
+// be allocated (`docker run -t` fails otherwise, e.g. when output is piped).
+func interactive() bool {
+	return isTTY(os.Stdin) && isTTY(os.Stdout)
+}
+
+func isTTY(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
