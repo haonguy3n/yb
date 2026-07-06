@@ -1,13 +1,18 @@
 // Package runner launches the build. With an image it runs inside that container
 // (mounting the project, dl/sstate, ssh key, and extra mounts, sourcing
 // oe-init-build-env, then bitbake). With no image it runs natively on the host.
+//
+// The final step replaces the yb process (syscall.Exec) with the build command,
+// so bitbake (host) or docker (container) becomes the real foreground process and
+// Ctrl+C is delivered natively — there is no yb wrapper left to die and orphan
+// bitbake's server/workers (which run in their own session and can't be reached
+// by forwarding signals to a child process group).
 package runner
 
 import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path"
 	"strings"
 	"syscall"
@@ -28,8 +33,8 @@ type Options struct {
 	Shell   bool     // drop into bash instead of running bitbake
 }
 
-// Run executes the build (or shell) for project p, in the container when an
-// image is set, otherwise natively on the host.
+// Run executes the build (or shell) for project p, replacing the yb process. On
+// success it does not return (the exec'd command's exit status becomes yb's).
 func Run(p *project.Project, o Options) error {
 	// DL_DIR/SSTATE_DIR must exist and be owned by the caller (a bind mount of a
 	// missing path is created root-owned; native bitbake also needs them).
@@ -45,64 +50,36 @@ func Run(p *project.Project, o Options) error {
 }
 
 // script builds the `source oe-init-build-env … && bitbake …` (or shell) command
-// run in a bash under root (WorkDir in a container, the project dir on the host).
+// run under root (WorkDir in a container, the project dir on the host).
 func script(o Options, root string) string {
 	init := fmt.Sprintf("source %s %s >/dev/null",
 		path.Join(root, o.PokyDir, "oe-init-build-env"), path.Join(root, "build"))
 	if o.Shell {
 		return init + " && exec bash"
 	}
-	return init + " && bitbake " + strings.Join(o.Targets, " ")
+	return init + " && exec bitbake " + strings.Join(o.Targets, " ")
 }
 
 func runHost(p *project.Project, o Options) error {
-	cmd := exec.Command("bash", "-c", script(o, p.Dir))
-	cmd.Dir = p.Dir
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if o.Shell {
-		return cmd.Run() // interactive: let bash own the terminal
-	}
-	return runForeground(cmd)
-}
-
-// runForeground runs a native build and keeps yb alive on Ctrl+C/SIGTERM,
-// forwarding the signal to the child's process group so bitbake shuts down
-// gracefully instead of being orphaned. The child leads its own group (Setpgid),
-// so the terminal delivers Ctrl+C to yb, which relays it — one Ctrl+C is one
-// SIGINT to bitbake (graceful), a second forces it, and `timeout`/CI SIGTERM
-// also reaches it. bitbake writes its progress UI to the tty and does not read
-// stdin, so running in a background group is fine.
-func runForeground(cmd *exec.Cmd) error {
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := cmd.Start(); err != nil {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
 		return err
 	}
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sigs)
-	done := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case s := <-sigs:
-				if sig, ok := s.(syscall.Signal); ok {
-					_ = syscall.Kill(-cmd.Process.Pid, sig) // whole child group
-				}
-			case <-done:
-				return
-			}
-		}
-	}()
-	err := cmd.Wait()
-	close(done)
-	return err
+	if err := os.Chdir(p.Dir); err != nil {
+		return err
+	}
+	return syscall.Exec(bash, []string{"bash", "-c", script(o, p.Dir)}, os.Environ())
 }
 
 func runContainer(p *project.Project, o Options) error {
-	args := []string{"run", "--rm"}
-	// A TTY gives bitbake its live progress UI (like kas-container). A shell
-	// always needs it; a build gets it only when run interactively, so CI logs
-	// stay plain line-by-line output.
+	docker, err := exec.LookPath("docker")
+	if err != nil {
+		return err
+	}
+	args := []string{"docker", "run", "--rm"}
+	// A TTY gives bitbake its live progress UI (like kas-container) and delivers
+	// Ctrl+C into the container. A shell always needs it; a build gets it only
+	// when run interactively, so CI/piped output stays plain (and -t won't error).
 	if o.Shell || interactive() {
 		args = append(args, "-it")
 	}
@@ -131,12 +108,7 @@ func runContainer(p *project.Project, o Options) error {
 	}
 	args = append(args, "-w", path.Join(conf.WorkDir, "build"), o.Image, "bash", "-c", script(o, conf.WorkDir))
 
-	// docker handles Ctrl+C itself: with -it the pty forwards it into the
-	// container to bitbake; without a tty (CI) --sig-proxy forwards it. No
-	// process-group wrapper here — it would break docker's terminal read.
-	cmd := exec.Command("docker", args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	return cmd.Run()
+	return syscall.Exec(docker, args, os.Environ())
 }
 
 // interactive reports whether both stdin and stdout are terminals, so a TTY can
