@@ -128,17 +128,26 @@ func isKasFile(a string) bool {
 	return err == nil && !info.IsDir()
 }
 
-// resolveImage returns the image to run in: an explicit image wins; otherwise yb
-// builds (if missing) the image for the project's version.
+// resolveImage returns the container image to run in: an explicit image wins,
+// else yb builds (if missing) the image for the project's version. With neither
+// set it returns "" — a native host build (no container).
 func resolveImage(p *project.Project, log image.Logf) (string, error) {
 	if p.Image != "" {
 		return p.Image, nil
 	}
 	if p.Version == "" {
-		return "", fmt.Errorf("set 'version' (%s) or 'image' in the kas file's yb: block",
-			strings.Join(image.Versions(), ", "))
+		return "", nil // native host build
 	}
 	return image.Ensure(p.Version, false, log)
+}
+
+// buildRoot is the path prefix bitbake sees for layers/build: the container
+// mount point when running in an image, else the project directory (host build).
+func buildRoot(p *project.Project, image string) string {
+	if image == "" {
+		return p.Dir
+	}
+	return conf.WorkDir
 }
 
 func cmdBuild(argv []string) error {
@@ -163,10 +172,6 @@ func cmdBuild(argv []string) error {
 	if err := repo.Checkout(p.Dir, c.Repos, p.SSHKey, *force, log); err != nil {
 		return err
 	}
-	buildDir := filepath.Join(p.Dir, "build")
-	if err := conf.Write(buildDir, conf.LocalConf(c, p.DLDir, p.SSTateDir, runtime.NumCPU()), conf.BBLayers(c)); err != nil {
-		return err
-	}
 	pokyDir, err := c.PokyDir()
 	if err != nil {
 		return err
@@ -175,7 +180,16 @@ func cmdBuild(argv []string) error {
 	if err != nil {
 		return err
 	}
-	log("building %v for %s/%s in %s", targets, c.Machine, c.Distro, img)
+	buildDir := filepath.Join(p.Dir, "build")
+	local := conf.LocalConf(c, p.DLDir, p.SSTateDir, runtime.NumCPU())
+	if err := conf.Write(buildDir, local, conf.BBLayers(c, buildRoot(p, img))); err != nil {
+		return err
+	}
+	where := img
+	if where == "" {
+		where = "the host system"
+	}
+	log("building %v for %s/%s in %s", targets, c.Machine, c.Distro, where)
 	return runner.Run(p, runner.Options{Image: img, PokyDir: pokyDir, Targets: targets})
 }
 
@@ -189,17 +203,18 @@ func cmdShell(argv []string) error {
 		return err
 	}
 	log := func(format string, a ...any) { fmt.Printf("• "+format+"\n", a...) }
-	// Ensure confs exist so the sourced build env is complete.
-	buildDir := filepath.Join(p.Dir, "build")
-	if err := conf.Write(buildDir, conf.LocalConf(c, p.DLDir, p.SSTateDir, runtime.NumCPU()), conf.BBLayers(c)); err != nil {
-		return err
-	}
 	pokyDir, err := c.PokyDir()
 	if err != nil {
 		return err
 	}
 	img, err := resolveImage(p, log)
 	if err != nil {
+		return err
+	}
+	// Ensure confs exist so the sourced build env is complete.
+	buildDir := filepath.Join(p.Dir, "build")
+	local := conf.LocalConf(c, p.DLDir, p.SSTateDir, runtime.NumCPU())
+	if err := conf.Write(buildDir, local, conf.BBLayers(c, buildRoot(p, img))); err != nil {
 		return err
 	}
 	return runner.Run(p, runner.Options{Image: img, PokyDir: pokyDir, Shell: true})

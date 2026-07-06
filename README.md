@@ -72,6 +72,12 @@ Known versions: `zeus`, `dunfell`, `gatesgarth`, `hardknott`, `honister`,
 in `internal/image/image.go`). The first build builds the image; it is cached
 thereafter.
 
+**Omit `version` (and `image`) to build natively on the host** — no container,
+bitbake runs directly. Use this when the host already has the Yocto build deps
+(e.g. a set-up CI runner); layer paths are the real project paths instead of
+`/work`. Set a `version` when you want the release-aligned container (e.g. zeus
+on a modern host).
+
 Run yb **from the project directory**:
 
 ```sh
