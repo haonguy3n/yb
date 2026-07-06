@@ -1,0 +1,16 @@
+header:
+  version: 10
+  includes:
+    - base.yml
+machine: top-machine
+target:
+  - image-a
+  - image-b
+repos:
+  iritech:
+    layers:
+      meta-main:
+      meta-disabled: excluded
+local_conf_header:
+  x: |
+    FOO = "1"

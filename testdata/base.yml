@@ -1,0 +1,20 @@
+header:
+  version: 10
+machine: base-machine
+distro: base-distro
+target: core-image-minimal
+repos:
+  poky:
+    url: https://git.yoctoproject.org/poky
+    path: repos/poky
+    commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    layers:
+      meta:
+      meta-poky:
+  meta-freescale:
+    url: https://github.com/Freescale/meta-freescale
+    path: repos/meta-freescale
+    branch: master
+  iritech:
+    layers:
+      meta-test:
