@@ -1,0 +1,49 @@
+name: release
+
+# Push a tag like v0.1.0 to build static yb binaries and attach them to a
+# GitHub Release. Other projects then fetch a binary directly, e.g.:
+#   curl -fsSL https://github.com/haonguy3n/yb/releases/latest/download/yb-linux-amd64 -o yb
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. v0.1.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build static binaries
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          mkdir -p dist
+          for arch in amd64 arm64; do
+            CGO_ENABLED=0 GOOS=linux GOARCH=$arch \
+              go build -trimpath -ldflags "-s -w -X main.version=${TAG}" \
+              -o dist/yb-linux-$arch ./cmd/yb
+          done
+          (cd dist && sha256sum yb-* > SHA256SUMS)
+          ls -l dist
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: dist/*
+          generate_release_notes: true

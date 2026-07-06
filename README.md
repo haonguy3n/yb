@@ -18,12 +18,27 @@ static Go binary — no Python, no `kas-container`, no prebuilt image to manage.
 
 See [docs/design/2026-07-06-yb.md](docs/design/2026-07-06-yb.md) for the design.
 
-## Build
+## Install
+
+Grab a prebuilt static binary from the latest release (no Go toolchain needed):
+
+```sh
+sudo curl -fsSL https://github.com/haonguy3n/yb/releases/latest/download/yb-linux-amd64 \
+  -o /usr/local/bin/yb && sudo chmod +x /usr/local/bin/yb
+yb version
+```
+
+(`yb-linux-arm64` is also published; each release carries `SHA256SUMS`.)
+
+Or build from source:
 
 ```sh
 make build            # -> ./yb
 make install          # -> $GOPATH/bin/yb
 ```
+
+Releases are cut by pushing a `v*` tag — the `release` workflow builds and
+attaches the binaries.
 
 ## Use
 
