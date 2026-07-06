@@ -21,6 +21,7 @@ const SSHKeyDest = "/home/builder/.ssh/iri"
 
 // Options controls a single run.
 type Options struct {
+	Image   string   // container image to run in
 	PokyDir string   // poky checkout dir, relative to project root
 	Targets []string // bitbake targets (ignored when Shell)
 	Shell   bool     // drop into bash instead of running bitbake
@@ -55,7 +56,7 @@ func Run(p *project.Project, o Options) error {
 	if p.SSHKey != "" {
 		args = append(args, "-v", p.SSHKey+":"+SSHKeyDest+":ro")
 	}
-	args = append(args, "-w", conf.BuildDir, p.Image, "bash", "-c", inner)
+	args = append(args, "-w", conf.BuildDir, o.Image, "bash", "-c", inner)
 
 	if o.DryRun {
 		fmt.Println("docker " + strings.Join(quoteAll(args), " "))

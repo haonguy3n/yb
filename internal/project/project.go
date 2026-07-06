@@ -11,16 +11,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Defaults applied when yb.yaml is absent or a field is unset.
-const (
-	DefaultImage = "yocto-kas:zeus"
-	DefaultCache = "/srv/yocto-cache"
-)
+// DefaultCache is used when yb.yaml sets no cache.
+const DefaultCache = "/srv/yocto-cache"
 
 // Project is the resolved orchestration config for one build tree.
 type Project struct {
 	KasFile string   `yaml:"kas_file"`
-	Image   string   `yaml:"image"`
+	Version string   `yaml:"version"` // Yocto release; yb builds an aligned image
+	Image   string   `yaml:"image"`   // optional: use this image instead of building one
 	Cache   string   `yaml:"cache"`
 	SSHKey  string   `yaml:"ssh_key"`
 	Mounts  []string `yaml:"mounts"` // "host/path" or "host/path:ro"
@@ -42,9 +40,6 @@ func Load(dir string) (*Project, error) {
 		return nil, err
 	}
 
-	if p.Image == "" {
-		p.Image = DefaultImage
-	}
 	if p.Cache == "" {
 		p.Cache = DefaultCache
 	}
