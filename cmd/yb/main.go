@@ -169,7 +169,20 @@ func cmdBuild(argv []string) error {
 
 	log := func(format string, a ...any) { fmt.Printf("• "+format+"\n", a...) }
 
-	if err := repo.Checkout(p.Dir, c.Repos, p.SSHKey, *force, log); err != nil {
+	n := 0
+	for _, r := range c.Repos {
+		if r.URL != "" {
+			n++
+		}
+	}
+	if n > 0 {
+		verb := "checking out"
+		if *force {
+			verb = "force-checking out"
+		}
+		log("%s %d repo%s (in parallel)", verb, n, plural(n))
+	}
+	if err := repo.Checkout(p.Dir, c.Repos, p.SSHKey, *force); err != nil {
 		return err
 	}
 	pokyDir, err := c.PokyDir()
@@ -218,4 +231,11 @@ func cmdShell(argv []string) error {
 		return err
 	}
 	return runner.Run(p, runner.Options{Image: img, PokyDir: pokyDir, Shell: true})
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }

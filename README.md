@@ -55,17 +55,18 @@ target:  [iritech-hab-firmware]
 
 yb:
   version: zeus              # yb builds yb-yocto:zeus (Ubuntu 18.04 + python2)
-  dl:      /srv/yocto-cache/downloads          # DL_DIR (default; safe to share)
-  sstate:  /srv/yocto-cache/sstate-irisentinel # SSTATE_DIR (per-project keeps it isolated)
+  dl:      /srv/yocto-cache/downloads          # optional DL_DIR (safe to share)
+  sstate:  /srv/yocto-cache/sstate-irisentinel # optional SSTATE_DIR (per-project keeps it isolated)
   ssh_key: ~/.ssh/iri
   mounts:
     - /srv/old-hab-keys/irisentinel:ro
   # image: my/prebuilt:tag   # optional — skip image building, use this instead
 ```
 
-`dl`/`sstate` default to `/srv/yocto-cache/{downloads,sstate}`. Sharing `dl`
-across projects deduplicates source downloads; a per-project `sstate` keeps each
-release's shared-state cache isolated. yb creates and mounts both.
+When set, `dl`/`sstate` become `DL_DIR`/`SSTATE_DIR`; when unset, yb omits them
+and Yocto uses its own defaults. Sharing `dl` across projects deduplicates
+source downloads; a per-project `sstate` keeps each release's shared-state cache
+isolated. yb creates and mounts only the paths you set.
 
 Known versions: `zeus`, `dunfell`, `gatesgarth`, `hardknott`, `honister`,
 `kirkstone`, `langdale`, `mickledore`, `nanbield`, `scarthgap` (extend the table

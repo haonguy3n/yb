@@ -14,6 +14,9 @@ repos:
 local_conf_header:
   x: |
     FOO = "1"
+bblayers_conf_header:
+  standard: |
+    TD_BBLAYERS_CONF_VERSION = "${REQUIRED_TD_BBLAYERS_CONF_VERSION}"
 yb:
   version: kirkstone
   dl: /tmp/dl

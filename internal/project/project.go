@@ -11,12 +11,6 @@ import (
 	"github.com/haonguy3n/yb/internal/config"
 )
 
-// Defaults for the yb block's dl/sstate when unset.
-const (
-	DefaultDL     = "/srv/yocto-cache/downloads"
-	DefaultSState = "/srv/yocto-cache/sstate"
-)
-
 // Project is the resolved orchestration config for one build tree.
 type Project struct {
 	Version   string   // Yocto release; yb builds an aligned image
@@ -28,8 +22,8 @@ type Project struct {
 	Dir       string   // absolute project root
 }
 
-// New builds a Project from a parsed config and the project directory, applying
-// defaults and expanding "~" in paths.
+// New builds a Project from a parsed config and the project directory,
+// expanding "~" in paths.
 func New(dir string, c *config.Config) (*Project, error) {
 	p := &Project{
 		Version:   c.Version,
@@ -40,12 +34,6 @@ func New(dir string, c *config.Config) (*Project, error) {
 	}
 	for _, m := range c.Mounts {
 		p.Mounts = append(p.Mounts, expandHome(m))
-	}
-	if p.DLDir == "" {
-		p.DLDir = DefaultDL
-	}
-	if p.SSTateDir == "" {
-		p.SSTateDir = DefaultSState
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {

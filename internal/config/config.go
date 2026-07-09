@@ -23,7 +23,8 @@ type Config struct {
 	Distro          string
 	Targets         []string
 	Repos           map[string]*Repo
-	LocalConfHeader map[string]string
+	LocalConfHeader   map[string]string
+	BBLayersConfHeader map[string]string
 
 	// Orchestration read from the file's `yb:` block (yb-only; kas ignores it).
 	Version   string
@@ -90,10 +91,15 @@ func (c *Config) Layers() []string {
 	return out
 }
 
-// PokyDir returns the poky checkout dir (relative to project root): the repo
-// named "poky", else any repo providing a meta-poky layer.
+// PokyDir returns the dir (relative to project root) that ships
+// oe-init-build-env, which the runner sources to set up the build env. Both
+// "poky" and "openembedded-core" ship it (poky bundles openembedded-core's
+// copy); a repo with a meta-poky layer is also accepted as a poky checkout.
 func (c *Config) PokyDir() (string, error) {
 	if r, ok := c.Repos["poky"]; ok {
+		return r.Dir(), nil
+	}
+	if r, ok := c.Repos["openembedded-core"]; ok {
 		return r.Dir(), nil
 	}
 	for _, name := range sortedKeys(c.Repos) {
@@ -101,7 +107,7 @@ func (c *Config) PokyDir() (string, error) {
 			return c.Repos[name].Dir(), nil
 		}
 	}
-	return "", fmt.Errorf("no poky repo found (need a repo named 'poky' or one with a meta-poky layer)")
+	return "", fmt.Errorf("no build-env repo found (need a repo named 'poky' or 'openembedded-core', or one with a meta-poky layer)")
 }
 
 // FindEntry returns the single kas file in dir that carries a top-level `yb:`
@@ -171,7 +177,8 @@ type rawKas struct {
 	Distro          string              `yaml:"distro"`
 	Target          stringList          `yaml:"target"`
 	Repos           map[string]*rawRepo `yaml:"repos"`
-	LocalConfHeader map[string]string   `yaml:"local_conf_header"`
+	LocalConfHeader   map[string]string `yaml:"local_conf_header"`
+	BBLayersConfHeader map[string]string `yaml:"bblayers_conf_header"`
 	YB              rawYB               `yaml:"yb"`
 }
 
@@ -195,12 +202,13 @@ type rawRepo struct {
 
 func (rk *rawKas) toConfig() *Config {
 	c := &Config{
-		Machine:         rk.Machine,
-		Distro:          rk.Distro,
-		Targets:         rk.Target,
-		Repos:           map[string]*Repo{},
-		LocalConfHeader: rk.LocalConfHeader,
-		Version:         rk.YB.Version,
+		Machine:             rk.Machine,
+		Distro:              rk.Distro,
+		Targets:             rk.Target,
+		Repos:               map[string]*Repo{},
+		LocalConfHeader:     rk.LocalConfHeader,
+		BBLayersConfHeader:  rk.BBLayersConfHeader,
+		Version:             rk.YB.Version,
 		Image:           rk.YB.Image,
 		DLDir:           rk.YB.DLDir,
 		SSTateDir:       rk.YB.SSTateDir,

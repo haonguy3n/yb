@@ -62,6 +62,18 @@ func TestLayerResolution(t *testing.T) {
 	}
 }
 
+func TestPokyDirOpenEmbeddedCore(t *testing.T) {
+	// A poky-less layout: openembedded-core ships oe-init-build-env too, so it
+	// should be accepted as the build-env dir (poky bundles its copy).
+	c := &Config{Repos: map[string]*Repo{
+		"openembedded-core": {Name: "openembedded-core", URL: "u", Path: "repos/oe-core", Branch: "scarthgap", Layers: map[string]bool{"meta": true}},
+		"meta-oe":           {Name: "meta-oe", URL: "u", Path: "repos/meta-oe", Branch: "scarthgap"},
+	}}
+	if dir, err := c.PokyDir(); err != nil || dir != "repos/oe-core" {
+		t.Errorf("PokyDir with openembedded-core: got %q, %v", dir, err)
+	}
+}
+
 func TestYBBlockAndEntry(t *testing.T) {
 	c, err := Load("../../testdata/top.yml")
 	if err != nil {
@@ -100,5 +112,15 @@ func TestLoadFilesOverlay(t *testing.T) {
 	}
 	if _, ok := c.LocalConfHeader["ci"]; !ok {
 		t.Error("local_conf_header should gain ci from overlay")
+	}
+}
+
+func TestBBLayersConfHeader(t *testing.T) {
+	c, err := Load("../../testdata/top.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := c.BBLayersConfHeader["standard"]; !ok {
+		t.Fatal("bblayers_conf_header should carry 'standard' from top.yml")
 	}
 }
