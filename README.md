@@ -12,7 +12,8 @@ static Go binary — no Python, no `kas-container`, no prebuilt image to manage.
   conf, and bitbake itself.
 - **Reads existing kas files.** `machine`, `distro`, `target`, `repos`/`layers`,
   `local_conf_header`, and `header.includes` are parsed and deep-merged exactly
-  as kas does. Repo refs use `commit:` or `branch:`.
+  as kas does. Repo refs use `commit:` or `branch:`; a repo with neither falls
+  back to `defaults: repos: branch:`.
 - **Our orchestration in a `yb:` block.** Version, `dl`/`sstate` dirs, ssh key,
   and extra bind mounts live in a `yb:` block in the kas file; kas ignores it.
 

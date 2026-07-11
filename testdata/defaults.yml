@@ -1,0 +1,32 @@
+header:
+  version: 14
+machine: jetson-orin-nano-devkit
+distro: tegrademo
+target: demo-image-full
+repos:
+  tegra-demo-distro:
+    layers:
+      layers/meta-tegra-support:
+      layers/meta-tegrademo:
+      layers/meta-demo-ci:
+
+  meta-tegra:
+    path: repos/meta-tegra
+    url: https://github.com/OE4T/meta-tegra.git
+
+  openembedded-core:
+    path: repos/openembedded-core
+    url: https://github.com/openembedded/openembedded-core.git
+    layers:
+      meta:
+
+  bitbake:
+    path: repos/bitbake
+    url: https://github.com/openembedded/bitbake.git
+    branch: 2.8
+    layers:
+      .: disabled
+
+defaults:
+  repos:
+    branch: wrynose

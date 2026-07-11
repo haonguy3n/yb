@@ -124,3 +124,30 @@ func TestBBLayersConfHeader(t *testing.T) {
 		t.Fatal("bblayers_conf_header should carry 'standard' from top.yml")
 	}
 }
+
+func TestDefaultRepoBranch(t *testing.T) {
+	c, err := Load("../../testdata/defaults.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Repos without a branch inherit defaults.repos.branch...
+	for _, name := range []string{"meta-tegra", "openembedded-core"} {
+		if got := c.Repos[name].Ref(); got != "wrynose" {
+			t.Errorf("%s ref: got %q, want wrynose (default branch)", name, got)
+		}
+	}
+	// ...and one that pins its own branch keeps it.
+	if got := c.Repos["bitbake"].Ref(); got != "2.8" {
+		t.Errorf("bitbake ref: got %q, want 2.8 (own branch beats default)", got)
+	}
+	// A repo whose only layer is disabled contributes no layer; the url-less
+	// project repo contributes its listed layers relative to ".".
+	want := []string{
+		"repos/meta-tegra",             // no layers: -> repo root
+		"repos/openembedded-core/meta", // bitbake's only layer is disabled
+		"layers/meta-demo-ci", "layers/meta-tegra-support", "layers/meta-tegrademo",
+	}
+	if got := c.Layers(); !reflect.DeepEqual(got, want) {
+		t.Errorf("layers:\n got  %v\n want %v", got, want)
+	}
+}

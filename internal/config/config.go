@@ -177,9 +177,18 @@ type rawKas struct {
 	Distro          string              `yaml:"distro"`
 	Target          stringList          `yaml:"target"`
 	Repos           map[string]*rawRepo `yaml:"repos"`
+	Defaults        rawDefaults         `yaml:"defaults"`
 	LocalConfHeader   map[string]string `yaml:"local_conf_header"`
 	BBLayersConfHeader map[string]string `yaml:"bblayers_conf_header"`
 	YB              rawYB               `yaml:"yb"`
+}
+
+// rawDefaults is the kas `defaults:` block: values a repo inherits when it does
+// not set them itself.
+type rawDefaults struct {
+	Repos struct {
+		Branch string `yaml:"branch"`
+	} `yaml:"repos"`
 }
 
 // rawYB is the yb orchestration block embedded in a kas file.
@@ -223,6 +232,11 @@ func (rk *rawKas) toConfig() *Config {
 			Commit: rr.Commit,
 			Branch: rr.Branch,
 			Layers: map[string]bool{},
+		}
+		// `defaults: repos: branch:` supplies the branch for any repo that does
+		// not pin one itself. A commit still wins over it (see Repo.Ref).
+		if r.Branch == "" {
+			r.Branch = rk.Defaults.Repos.Branch
 		}
 		for l, v := range rr.Layers {
 			r.Layers[l] = layerEnabled(v)
