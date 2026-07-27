@@ -43,6 +43,17 @@ func New(dir string, c *config.Config) (*Project, error) {
 	return p, nil
 }
 
+// MountSpec splits an extra mount entry ("host/path" or "host/path:ro") into the
+// host path and the docker option suffix. The host path is also the path inside
+// the container — yb mounts extras at their host path so conf values that name
+// them stay valid on both sides.
+func MountSpec(m string) (host, opt string) {
+	if strings.HasSuffix(m, ":ro") {
+		return strings.TrimSuffix(m, ":ro"), ":ro"
+	}
+	return m, ""
+}
+
 func expandHome(path string) string {
 	if path == "~" || strings.HasPrefix(path, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {

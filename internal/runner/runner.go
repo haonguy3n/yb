@@ -92,10 +92,15 @@ func runContainer(p *project.Project, o Options) error {
 		seen[d] = true
 		args = append(args, "-v", d+":"+d)
 	}
+	// A mount that doesn't exist on the host is skipped, not passed to docker:
+	// docker would create it as an empty root-owned directory, and the build then
+	// fails much later, deep inside bitbake, with a confusing "Permission denied"
+	// on a path that looks like it exists.
 	for _, m := range p.Mounts {
-		host, opt := m, ""
-		if strings.HasSuffix(m, ":ro") {
-			host, opt = strings.TrimSuffix(m, ":ro"), ":ro"
+		host, opt := project.MountSpec(m)
+		if _, err := os.Stat(host); err != nil {
+			fmt.Fprintf(os.Stderr, "yb: mount %s not found on the host; building without it\n", host)
+			continue
 		}
 		args = append(args, "-v", host+":"+host+opt)
 	}
