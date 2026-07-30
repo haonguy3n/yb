@@ -116,6 +116,31 @@ func runContainer(p *project.Project, o Options) error {
 	return syscall.Exec(docker, args, os.Environ())
 }
 
+func RunSDK(image, sdkDir, workDir string, cmd []string) error {
+	docker, err := exec.LookPath("docker")
+	if err != nil {
+		return err
+	}
+	args := []string{"docker", "run", "--rm"}
+	if len(cmd) == 0 || interactive() {
+		args = append(args, "-it")
+	}
+	args = append(args,
+		"-v", sdkDir+":"+sdkDir,
+		"-v", workDir+":"+conf.WorkDir,
+		"-w", conf.WorkDir,
+		image, "bash", "-c", sdkScript(sdkDir, cmd))
+	return syscall.Exec(docker, args, os.Environ())
+}
+
+func sdkScript(sdkDir string, cmd []string) string {
+	src := "source " + sdkDir + "/environment-setup-* >/dev/null"
+	if len(cmd) == 0 {
+		return src + " && exec bash"
+	}
+	return src + " && exec " + strings.Join(cmd, " ")
+}
+
 // interactive reports whether both stdin and stdout are terminals, so a TTY can
 // be allocated (`docker run -t` fails otherwise, e.g. when output is piped).
 func interactive() bool {

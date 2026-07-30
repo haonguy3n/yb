@@ -33,6 +33,8 @@ func main() {
 		err = cmdBuild(os.Args[2:])
 	case "shell":
 		err = cmdShell(os.Args[2:])
+	case "sdk":
+		err = cmdSDK(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("yb " + version)
 	case "help", "-h", "--help":
@@ -54,6 +56,9 @@ func usage() {
 Usage:
   yb build [targets...]   checkout repos, generate conf, run bitbake in the container
   yb shell                open a bitbake build shell in the container
+  yb sdk --sdk DIR [--image IMG] [cmd...]
+                          cross-compile the current dir in the container with an
+                          installed Yocto SDK (mounted from DIR); no cmd = a shell
   yb version
 
 Run it from the project directory. yb builds the file carrying a yb: block (name
@@ -231,6 +236,45 @@ func cmdShell(argv []string) error {
 		return err
 	}
 	return runner.Run(p, runner.Options{Image: img, PokyDir: pokyDir, Shell: true})
+}
+
+func cmdSDK(argv []string) error {
+	fs := flag.NewFlagSet("sdk", flag.ExitOnError)
+	sdkDir := fs.String("sdk", "", "installed Yocto SDK dir, e.g. /opt/poky/4.0")
+	imageFlag := fs.String("image", "", "container image to build in (default: the yb project's image)")
+	_ = fs.Parse(argv)
+
+	if *sdkDir == "" {
+		return fmt.Errorf("--sdk is required (the SDK install dir, e.g. /opt/poky/4.0)")
+	}
+	sdk, err := filepath.Abs(*sdkDir)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(sdk); err != nil {
+		return fmt.Errorf("sdk dir: %w", err)
+	}
+
+	img := *imageFlag
+	if img == "" {
+		p, _, err := loaded(nil)
+		if err != nil {
+			return fmt.Errorf("no --image given and no yb project here (%v)", err)
+		}
+		log := func(format string, a ...any) { fmt.Printf("• "+format+"\n", a...) }
+		if img, err = resolveImage(p, log); err != nil {
+			return err
+		}
+		if img == "" {
+			return fmt.Errorf("project sets no image; pass --image")
+		}
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	return runner.RunSDK(img, sdk, cwd, fs.Args())
 }
 
 func plural(n int) string {
