@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         socat cpio python3 python3-pip python3-pexpect xz-utils debianutils \
         iputils-ping python3-git python3-jinja2 libegl1-mesa libsdl1.2-dev \
         python3-subunit mesa-common-dev zstd liblz4-tool file locales sudo \
-        ca-certificates curl tar bzip2 openssh-client \
+        ca-certificates curl tar bzip2 openssh-client subversion \
         ${EXTRA_PACKAGES} \
     && rm -rf /var/lib/apt/lists/*
 
