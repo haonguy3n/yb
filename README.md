@@ -59,8 +59,9 @@ yb:
   dl:      /srv/yocto-cache/downloads          # optional DL_DIR (safe to share)
   sstate:  /srv/yocto-cache/sstate-irisentinel # optional SSTATE_DIR (per-project keeps it isolated)
   ssh_key: ~/.ssh/iri
-  mounts:
-    - /srv/old-hab-keys/irisentinel:ro
+  mount:
+    keys: |
+      /srv/old-hab-keys/irisentinel:ro
   # image: my/prebuilt:tag   # optional — skip image building, use this instead
 ```
 
@@ -68,6 +69,12 @@ When set, `dl`/`sstate` become `DL_DIR`/`SSTATE_DIR`; when unset, yb omits them
 and Yocto uses its own defaults. Sharing `dl` across projects deduplicates
 source downloads; a per-project `sstate` keeps each release's shared-state cache
 isolated. yb creates and mounts only the paths you set.
+
+`mount:` is a map of named blocks, one mount per line (`host/path` or
+`host/path:ro`; blank lines and `#` lines are ignored). Blocks merge by name
+across kas files, so an overlay adds its own block without repeating the base
+ones, and an empty block removes one. The older `mounts:` list still works, but
+a later file's list replaces an earlier one.
 
 Known versions: `zeus`, `dunfell`, `gatesgarth`, `hardknott`, `honister`,
 `kirkstone`, `langdale`, `mickledore`, `nanbield`, `scarthgap` (extend the table

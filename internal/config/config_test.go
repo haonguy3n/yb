@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -149,5 +151,39 @@ func TestDefaultRepoBranch(t *testing.T) {
 	}
 	if got := c.Layers(); !reflect.DeepEqual(got, want) {
 		t.Errorf("layers:\n got  %v\n want %v", got, want)
+	}
+}
+
+func TestMountBlocks(t *testing.T) {
+	got := mountList(
+		[]string{"/a", "/b:ro"},
+		map[string]string{
+			"keys":  "/k\n\n  # not a mount\n/b:ro\n",
+			"hosts": "/etc/hosts:ro\n",
+		},
+	)
+	want := []string{"/a", "/b:ro", "/etc/hosts:ro", "/k"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
+func TestMountBlocksMergeAcrossFiles(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	base := write("base.yml", "yb:\n  mount:\n    src: |\n      /src\n    hosts: |\n      /etc/hosts:ro\n")
+	over := write("over.yml", "yb:\n  mount:\n    keys: |\n      /keys\n    hosts: \"\"\n")
+	c, err := LoadFiles([]string{base, over})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"/keys", "/src"}; !reflect.DeepEqual(c.Mounts, want) {
+		t.Errorf("got %v, want %v (blocks add by name, an empty block removes one)", c.Mounts, want)
 	}
 }

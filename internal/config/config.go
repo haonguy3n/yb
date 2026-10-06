@@ -203,12 +203,13 @@ type rawDefaults struct {
 
 // rawYB is the yb orchestration block embedded in a kas file.
 type rawYB struct {
-	Version   string   `yaml:"version"`
-	Image     string   `yaml:"image"`
-	DLDir     string   `yaml:"dl"`
-	SSTateDir string   `yaml:"sstate"`
-	SSHKey    string   `yaml:"ssh_key"`
-	Mounts    []string `yaml:"mounts"`
+	Version   string            `yaml:"version"`
+	Image     string            `yaml:"image"`
+	DLDir     string            `yaml:"dl"`
+	SSTateDir string            `yaml:"sstate"`
+	SSHKey    string            `yaml:"ssh_key"`
+	Mounts    []string          `yaml:"mounts"`
+	Mount     map[string]string `yaml:"mount"`
 }
 
 type rawRepo struct {
@@ -238,7 +239,7 @@ func (rk *rawKas) toConfig() *Config {
 		DLDir:              rk.YB.DLDir,
 		SSTateDir:          rk.YB.SSTateDir,
 		SSHKey:             rk.YB.SSHKey,
-		Mounts:             rk.YB.Mounts,
+		Mounts:             mountList(rk.YB.Mounts, rk.YB.Mount),
 	}
 	for name, rr := range rk.Repos {
 		r := &Repo{
@@ -345,6 +346,28 @@ func mergeMap(dst, src map[string]interface{}) map[string]interface{} {
 			}
 		}
 		out[k] = v
+	}
+	return out
+}
+
+func mountList(list []string, blocks map[string]string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(m string) {
+		m = strings.TrimSpace(m)
+		if m == "" || strings.HasPrefix(m, "#") || seen[m] {
+			return
+		}
+		seen[m] = true
+		out = append(out, m)
+	}
+	for _, m := range list {
+		add(m)
+	}
+	for _, name := range sortedKeys(blocks) {
+		for _, line := range strings.Split(blocks[name], "\n") {
+			add(line)
+		}
 	}
 	return out
 }
