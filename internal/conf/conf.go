@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -44,9 +45,23 @@ func LocalConf(c *config.Config, dlDir, sstateDir string, nproc int) string {
 	if sstateDir != "" {
 		fmt.Fprintf(&b, "SSTATE_DIR ?= %q\n", sstateDir)
 	}
-	fmt.Fprintf(&b, "BB_NUMBER_THREADS ??= %q\n", fmt.Sprint(nproc))
-	fmt.Fprintf(&b, "PARALLEL_MAKE ??= %q\n", fmt.Sprintf("-j %d", nproc))
+	if !setsVar(c, "BB_NUMBER_THREADS") {
+		fmt.Fprintf(&b, "BB_NUMBER_THREADS ??= %q\n", fmt.Sprint(nproc))
+	}
+	if !setsVar(c, "PARALLEL_MAKE") {
+		fmt.Fprintf(&b, "PARALLEL_MAKE ??= %q\n", fmt.Sprintf("-j %d", nproc))
+	}
 	return b.String()
+}
+
+func setsVar(c *config.Config, name string) bool {
+	re := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(name) + `\s*(\?\?|\?|:)?=`)
+	for _, v := range c.LocalConfHeader {
+		if re.MatchString(v) {
+			return true
+		}
+	}
+	return false
 }
 
 // BBLayers renders build/conf/bblayers.conf from the config's resolved layers,
