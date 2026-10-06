@@ -5,7 +5,9 @@
 package image
 
 import (
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -34,7 +36,9 @@ var Profiles = map[string]Profile{
 	"langdale":   {Ubuntu: "22.04"},
 	"mickledore": {Ubuntu: "22.04"},
 	"nanbield":   {Ubuntu: "22.04"},
-	"scarthgap":  {Ubuntu: "24.04"},
+	// 24.04 dropped libegl1-mesa and libsdl1.2-dev, which the shared Dockerfile
+	// installs; 22.04 is sanity-tested for scarthgap and needs no Dockerfile change.
+	"scarthgap": {Ubuntu: "22.04"},
 }
 
 // Logf receives progress lines.
@@ -56,6 +60,20 @@ func Versions() []string {
 	return out
 }
 
+const fingerprintLabel = "yb.build"
+
+func fingerprint(p Profile) string {
+	h := sha256.New()
+	fmt.Fprint(h, dockerfile, "\x00", p.Ubuntu, "\x00", p.Extra, "\x00", os.Getuid(), "\x00", os.Getgid())
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+func current(tag, fp string) bool {
+	out, err := exec.Command("docker", "image", "inspect",
+		"-f", `{{index .Config.Labels "`+fingerprintLabel+`"}}`, tag).Output()
+	return err == nil && strings.TrimSpace(string(out)) == fp
+}
+
 // Tag is the image name yb builds for a release.
 func Tag(version string) string { return "yb-yocto:" + version }
 
@@ -72,12 +90,17 @@ func Ensure(version string, rebuild bool, log Logf) (string, error) {
 		return "", fmt.Errorf("unknown version %q (known: %s)", version, strings.Join(Versions(), ", "))
 	}
 	tag := Tag(version)
+	fp := fingerprint(p)
 	if !rebuild && Exists(tag) {
-		return tag, nil
+		if current(tag, fp) {
+			return tag, nil
+		}
+		log("image %s is out of date, rebuilding…", tag)
 	}
 	log("building image %s (ubuntu %s)…", tag, p.Ubuntu)
 	cmd := exec.Command("docker", "build",
 		"-t", tag,
+		"--label", fingerprintLabel+"="+fp,
 		"--build-arg", "UBUNTU_VERSION="+p.Ubuntu,
 		"--build-arg", "EXTRA_PACKAGES="+p.Extra,
 		"--build-arg", "UID="+strconv.Itoa(os.Getuid()),
