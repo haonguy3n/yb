@@ -61,7 +61,73 @@ func Checkout(projectDir string, repos map[string]*config.Repo, sshKey string, f
 		}(i, j)
 	}
 	wg.Wait()
-	return errors.Join(errs...)
+	if err := errors.Join(errs...); err != nil {
+		return err
+	}
+	// Patches come last: a patch file usually lives in another repo of the same
+	// build, which must be checked out first.
+	for _, name := range sortedRepoNames(repos) {
+		if err := applyPatches(env, projectDir, name, repos); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyPatches applies the `patches:` of one repo to its checkout, in id order.
+// Each patch names the repo carrying it and a path (a patch file, or a directory
+// of patch files applied in name order) relative to that repo's checkout.
+//
+// Patches are applied to the working tree with `git apply`, not committed, so
+// the pinned ref stays the pinned ref. A patch that is already applied is
+// skipped — checkout is re-run on every build, and only `--force` resets the
+// tree, so the same patch would otherwise fail to apply the second time.
+func applyPatches(env []string, projectDir, name string, repos map[string]*config.Repo) error {
+	r := repos[name]
+	dir := filepath.Join(projectDir, r.Dir())
+	for _, p := range r.Patches {
+		src, ok := repos[p.Repo]
+		if !ok {
+			return fmt.Errorf("patch %s of repo %s: unknown repo %q", p.ID, name, p.Repo)
+		}
+		files, err := patchFiles(filepath.Join(projectDir, src.Dir(), p.Path))
+		if err != nil {
+			return fmt.Errorf("patch %s of repo %s: %w", p.ID, name, err)
+		}
+		for _, f := range files {
+			if _, err := runCapture(env, dir, "git", "apply", "--reverse", "--check", f); err == nil {
+				continue // already applied
+			}
+			if out, err := runCapture(env, dir, "git", "apply", f); err != nil {
+				return fmt.Errorf("apply patch %s to %s (%s): %w\n%s", p.ID, name, f, err, out)
+			}
+		}
+	}
+	return nil
+}
+
+// patchFiles expands a patch path into the files to apply: the path itself, or
+// every file directly inside it when it names a directory (in name order).
+func patchFiles(path string) ([]string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() {
+		return []string{path}, nil
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	var files []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			files = append(files, filepath.Join(path, e.Name()))
+		}
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 // checkoutOne clones (if missing) and checks out a single repo at its pinned ref.

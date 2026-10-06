@@ -19,11 +19,11 @@ import (
 
 // Config is a fully-merged kas configuration.
 type Config struct {
-	Machine         string
-	Distro          string
-	Targets         []string
-	Repos           map[string]*Repo
-	LocalConfHeader   map[string]string
+	Machine            string
+	Distro             string
+	Targets            []string
+	Repos              map[string]*Repo
+	LocalConfHeader    map[string]string
 	BBLayersConfHeader map[string]string
 
 	// Orchestration read from the file's `yb:` block (yb-only; kas ignores it).
@@ -37,12 +37,22 @@ type Config struct {
 
 // Repo is one entry under `repos:`.
 type Repo struct {
-	Name   string
-	URL    string
-	Path   string
-	Commit string
-	Branch string
-	Layers map[string]bool // layer subdir -> enabled
+	Name    string
+	URL     string
+	Path    string
+	Commit  string
+	Branch  string
+	Layers  map[string]bool // layer subdir -> enabled
+	Patches []Patch         // patches applied to this checkout, in id order
+}
+
+// Patch is one entry under a repo's `patches:` — a patch (or directory of
+// patches) carried by another repo in the same build and applied on top of the
+// pinned checkout. kas semantics: patches are applied in id order.
+type Patch struct {
+	ID   string // the key in the patches: map; sorts the application order
+	Repo string // repo whose checkout holds the patch file
+	Path string // patch file or directory, relative to that repo's checkout
 }
 
 // Dir is the repo's checkout directory relative to the project root. A url-less
@@ -173,14 +183,14 @@ func LoadFiles(paths []string) (*Config, error) {
 }
 
 type rawKas struct {
-	Machine         string              `yaml:"machine"`
-	Distro          string              `yaml:"distro"`
-	Target          stringList          `yaml:"target"`
-	Repos           map[string]*rawRepo `yaml:"repos"`
-	Defaults        rawDefaults         `yaml:"defaults"`
-	LocalConfHeader   map[string]string `yaml:"local_conf_header"`
-	BBLayersConfHeader map[string]string `yaml:"bblayers_conf_header"`
-	YB              rawYB               `yaml:"yb"`
+	Machine            string              `yaml:"machine"`
+	Distro             string              `yaml:"distro"`
+	Target             stringList          `yaml:"target"`
+	Repos              map[string]*rawRepo `yaml:"repos"`
+	Defaults           rawDefaults         `yaml:"defaults"`
+	LocalConfHeader    map[string]string   `yaml:"local_conf_header"`
+	BBLayersConfHeader map[string]string   `yaml:"bblayers_conf_header"`
+	YB                 rawYB               `yaml:"yb"`
 }
 
 // rawDefaults is the kas `defaults:` block: values a repo inherits when it does
@@ -202,27 +212,33 @@ type rawYB struct {
 }
 
 type rawRepo struct {
-	URL    string                 `yaml:"url"`
-	Path   string                 `yaml:"path"`
-	Commit string                 `yaml:"commit"`
-	Branch string                 `yaml:"branch"`
-	Layers map[string]interface{} `yaml:"layers"`
+	URL     string                 `yaml:"url"`
+	Path    string                 `yaml:"path"`
+	Commit  string                 `yaml:"commit"`
+	Branch  string                 `yaml:"branch"`
+	Layers  map[string]interface{} `yaml:"layers"`
+	Patches map[string]rawPatch    `yaml:"patches"`
+}
+
+type rawPatch struct {
+	Repo string `yaml:"repo"`
+	Path string `yaml:"path"`
 }
 
 func (rk *rawKas) toConfig() *Config {
 	c := &Config{
-		Machine:             rk.Machine,
-		Distro:              rk.Distro,
-		Targets:             rk.Target,
-		Repos:               map[string]*Repo{},
-		LocalConfHeader:     rk.LocalConfHeader,
-		BBLayersConfHeader:  rk.BBLayersConfHeader,
-		Version:             rk.YB.Version,
-		Image:           rk.YB.Image,
-		DLDir:           rk.YB.DLDir,
-		SSTateDir:       rk.YB.SSTateDir,
-		SSHKey:          rk.YB.SSHKey,
-		Mounts:          rk.YB.Mounts,
+		Machine:            rk.Machine,
+		Distro:             rk.Distro,
+		Targets:            rk.Target,
+		Repos:              map[string]*Repo{},
+		LocalConfHeader:    rk.LocalConfHeader,
+		BBLayersConfHeader: rk.BBLayersConfHeader,
+		Version:            rk.YB.Version,
+		Image:              rk.YB.Image,
+		DLDir:              rk.YB.DLDir,
+		SSTateDir:          rk.YB.SSTateDir,
+		SSHKey:             rk.YB.SSHKey,
+		Mounts:             rk.YB.Mounts,
 	}
 	for name, rr := range rk.Repos {
 		r := &Repo{
@@ -240,6 +256,10 @@ func (rk *rawKas) toConfig() *Config {
 		}
 		for l, v := range rr.Layers {
 			r.Layers[l] = layerEnabled(v)
+		}
+		for _, id := range sortedKeys(rr.Patches) {
+			p := rr.Patches[id]
+			r.Patches = append(r.Patches, Patch{ID: id, Repo: p.Repo, Path: p.Path})
 		}
 		c.Repos[name] = r
 	}
